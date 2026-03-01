@@ -11,8 +11,8 @@ from common import *
 def calculate_crc32(file):
 	file.seek(0)
 
-	buf = bytearray(file.read(HEAD_SIZE))
-	set_head_field(buf, OFFSET_CRC32, 0x20 * b"\x00")
+	buf = bytearray(file.read(ENC_HEAD_SIZE))
+	set_head_field(buf, ENC_FIELD_CRC32, ENC_FIELD_CRC32[1] * b"\x00")
 	crc = binascii.crc32(buf)
 
 	while buf := file.read(1024):
@@ -22,15 +22,15 @@ def calculate_crc32(file):
 
 
 def read_header(file):
-	head = file.read(HEAD_SIZE)
-	if len(head) != HEAD_SIZE:
+	head = file.read(ENC_HEAD_SIZE)
+	if len(head) != ENC_HEAD_SIZE:
 		raise Exception("failed to read header")
 
-	magic = get_head_field(head, OFFSET_MAGIC)
+	magic = get_head_field(head, ENC_FIELD_MAGIC)
 	if magic != MAGIC:
 		raise Exception("unexpected magic value at offset 0xc0")
 
-	size = decode_int(get_head_field(head, OFFSET_FILE_SIZE))
+	size = decode_int(get_head_field(head, ENC_FIELD_FILE_SIZE))
 
 	file.seek(0, os.SEEK_END)
 	actual_size = file.tell()
@@ -38,16 +38,16 @@ def read_header(file):
 	if size != actual_size:
 		raise Exception(f"unexpected file size ({size} != {actual_size})")
 
-	crc = decode_int(get_head_field(head, OFFSET_CRC32))
+	crc = decode_int(get_head_field(head, ENC_FIELD_CRC32))
 
 	actual_crc = calculate_crc32(file)
 
 	if crc != actual_crc:
 		raise Exception(f"unexpected CRC32 ({crc} != {actual_crc})")
 
-	iv = get_head_field(head, OFFSET_IV)
-	salt = get_head_field(head, OFFSET_SALT)
-	payload_size = decode_int(get_head_field(head, OFFSET_PAYLOAD_SIZE))
+	iv = get_head_field(head, ENC_FIELD_IV)
+	salt = get_head_field(head, ENC_FIELD_SALT)
+	payload_size = decode_int(get_head_field(head, ENC_FIELD_PAYLOAD_SIZE))
 
 	return iv, salt, payload_size
 
@@ -55,7 +55,7 @@ def read_header(file):
 def decrypt_image(file_in, file_out, key, iv):
 	cipher = AES.new(key, AES.MODE_CBC, iv=iv[0:16])
 
-	file_in.seek(HEAD_SIZE)
+	file_in.seek(ENC_HEAD_SIZE)
 	while buf := file_in.read(1024):
 		out = cipher.decrypt(buf)
 		file_out.write(out)

@@ -9,24 +9,27 @@ from Crypto.Cipher import AES
 from common import *
 
 
-def generate_random_value():
-	return secrets.token_bytes(LENGTH_HEAD_FIELD_DEFAULT)
+def generate_random_value(field):
+	return secrets.token_bytes(field[1])
 
 
 def calculate_total_size(payload_size):
 	remainder = payload_size % 16
 	padding = 16 - remainder if remainder != 0 else 0
-	return HEAD_SIZE + payload_size + padding
+	return ENC_HEAD_SIZE + payload_size + padding
 
 
 def write_initial_header(file_out, iv, salt, payload_size):
-	head = bytearray(HEAD_SIZE)
+	head = bytearray(ENC_HEAD_SIZE)
 
-	set_head_field(head, OFFSET_IV, iv)
-	set_head_field(head, OFFSET_SALT, salt)
-	set_head_field(head, OFFSET_FILE_SIZE, encode_int(calculate_total_size(payload_size)))
-	set_head_field(head, OFFSET_PAYLOAD_SIZE, encode_int(payload_size))
-	set_head_field(head, OFFSET_MAGIC, MAGIC)
+	field_size = encode_int(calculate_total_size(payload_size), ENC_FIELD_FILE_SIZE)
+	field_payload_size = encode_int(payload_size, ENC_FIELD_PAYLOAD_SIZE)
+
+	set_head_field(head, ENC_FIELD_IV, iv)
+	set_head_field(head, ENC_FIELD_SALT, salt)
+	set_head_field(head, ENC_FIELD_FILE_SIZE, field_size)
+	set_head_field(head, ENC_FIELD_PAYLOAD_SIZE, field_payload_size)
+	set_head_field(head, ENC_FIELD_MAGIC, MAGIC)
 
 	file_out.write(head)
 
@@ -60,8 +63,8 @@ def encrypt_image(file_in, file_out, key, iv, crc):
 
 
 def write_crc(file_out, crc):
-	file_out.seek(OFFSET_CRC32)
-	file_out.write(encode_int(crc))
+	file_out.seek(ENC_FIELD_CRC32[0])
+	file_out.write(encode_int(crc, ENC_FIELD_CRC32))
 
 
 def main(filename_in, filename_out):
@@ -70,8 +73,8 @@ def main(filename_in, filename_out):
 	file_in.seek(0, os.SEEK_END)
 	payload_size = file_in.tell()
 
-	iv = generate_random_value()
-	salt = generate_random_value()
+	iv = generate_random_value(ENC_FIELD_IV)
+	salt = generate_random_value(ENC_FIELD_SALT)
 
 	file_out = open(filename_out, "wb")
 

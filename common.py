@@ -1,7 +1,7 @@
 import hashlib
 
 
-# header format: length 0x140
+# encryption header: length 0x140
 # offset 0x20, length 0x20: AES256-CBC IV
 # offset 0x40, length 0x20: PBKDF2 salt
 # offset 0x60, length 0x20: encrypted file size (encoded as string)
@@ -9,18 +9,14 @@ import hashlib
 # offset 0xa0, length 0x20: unencrypted payload size (encoded as string)
 # offset 0xc0, length 0x2a: magic string
 
+ENC_HEAD_SIZE = 0x140
 
-HEAD_SIZE = 0x140
-
-OFFSET_IV = 0x20
-OFFSET_SALT = 0x40
-OFFSET_FILE_SIZE = 0x60
-OFFSET_CRC32 = 0x80
-OFFSET_PAYLOAD_SIZE = 0xa0
-OFFSET_MAGIC = 0xc0
-
-LENGTH_HEAD_FIELD_DEFAULT = 0x20
-LENGTH_HEAD_FIELD_MAGIC = 0x2a
+ENC_FIELD_IV = (0x20, 0x20)
+ENC_FIELD_SALT = (0x40, 0x20)
+ENC_FIELD_FILE_SIZE = (0x60, 0x20)
+ENC_FIELD_CRC32 = (0x80, 0x20)
+ENC_FIELD_PAYLOAD_SIZE = (0xa0, 0x20)
+ENC_FIELD_MAGIC = (0xc0, 0x2a)
 
 
 PUBLIC_KEY = \
@@ -37,14 +33,14 @@ PUBLIC_KEY = \
 MAGIC = b"534320200402aaa567787970746562366c6dsc5343"
 
 
-def get_head_field(buf, offset):
-	length = LENGTH_HEAD_FIELD_MAGIC if offset == OFFSET_MAGIC else LENGTH_HEAD_FIELD_DEFAULT
+def get_head_field(buf, field):
+	offset, length = field
 
 	return buf[offset:offset+length]
 
 
-def set_head_field(buf, offset, val):
-	length = LENGTH_HEAD_FIELD_MAGIC if offset == OFFSET_MAGIC else LENGTH_HEAD_FIELD_DEFAULT
+def set_head_field(buf, field, val):
+	offset, length = field
 
 	if length != len(val):
 		raise Exception("incorrect header field length")
@@ -52,20 +48,32 @@ def set_head_field(buf, offset, val):
 	buf[offset:offset+length] = val
 
 
+def decode_string(val):
+	return val.rstrip(b"\x00").decode("ascii")
+
+
+def encode_string(val, field):
+	length = field[1]
+	if len(val) > length:
+		raise Exception(f'value "{val}" too long to encode in {length} bytes')
+
+	padding = b"\x00" * (length - len(val))
+	return bytes(val, "ascii") + padding
+
+
 def decode_int(val):
-	return int(val.rstrip(b"\x00"))
+	return int(decode_string(val))
 
 
-def encode_int(val):
+def encode_int(val, field):
 	string = str(val)
-	padding = b"\x00" * (LENGTH_HEAD_FIELD_DEFAULT - len(string))
-	return bytes(string, "ascii") + padding
+	return encode_string(string, field)
 
 
 def calculate_aes_key(salt, payload_size):
 	password = bytearray(0x200)
 	password[0:0x100] = PUBLIC_KEY[0:0x100]
 	password[0x100:0x12a] = MAGIC
-	password[0x12a:0x14a] = encode_int(payload_size)
+	password[0x12a:0x14a] = encode_int(payload_size, (0, 0x20))
 
 	return hashlib.pbkdf2_hmac("sha256", password, salt, 1000)
